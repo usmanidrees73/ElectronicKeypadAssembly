@@ -1,0 +1,364 @@
+ORG 0000H
+INITIALIZATION:
+MOV 50H, #04H
+JMP STARTING
+
+COUNTDOWN:
+LJMP MAIN
+
+ORG 13H
+CLR P3.4
+HEREOOINT:
+ACALL DISPLAY
+SETB P3.4
+JB P3.4, HEREOOINT
+RETI
+
+ORG 40H
+MAIN: MOV IE, #10000100B
+
+mov R7, #59
+
+MOV R0, #56H
+LOOP:
+MOV TMOD,#10H
+MOV TH1,#11111111B
+MOV TL1,#00000000B
+AGA1:SETB TR0
+BACK:MOV A,TL0
+ACALL display
+JNB TF0,BACK
+CLR TR0
+CLR TF0
+DJNZ R0, LOOP
+MOV R0, #56H
+DJNZ R7, LOOP
+
+
+
+MOV P1, #0H
+display:
+mov A, R7
+mov B,#10
+div AB
+mov r1,A
+mov r2,B
+mov DPTR, #data1
+
+//MOV P2, #0H
+CLR A  
+mov A,r1
+MOVC A,@A+DPTR
+MOV P2,#01000000B
+mov p1, A	   
+ACALL DEL1
+CLR A 
+mov A,r2
+MOV P2,#10000000B
+MOVC A,@A+DPTR
+mov p1, A	   
+ACALL DEL1
+RET
+
+
+DEL1:
+MOV R4, #2
+HEREOO:
+MOV R5, #20
+DJNZ R5, $
+DJNZ R4, HEREOO
+RET
+
+
+
+STARTING:
+MOV DPTR,#MYCOM
+C1: CLR A
+CLR P2.6
+CLR P2.7
+MOVC A,@A+DPTR
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ SEND_DAT
+SJMP C1
+SEND_DAT:
+MOV DPTR,#MYDATA
+D1: CLR A
+MOVC A,@A+DPTR
+ACALL DATAWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ NEXT_WORK
+SJMP D1
+
+
+
+NEXT_WORK: ;send command to LCD
+MOV P1,#01h ;copy reg A to P1
+CLR P2.0 ;RS=0 for command
+CLR P2.1 ;R/W=0 for write
+SETB P2.2 ;E=1 for high pulse
+ACALL DELAY ;give LCD some time
+CLR P2.2 ;E=0 for H-to-L pulse
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+//ALREADY SAVED PASSWORD ON MEMORY LOCATIONS
+MOV 40H, #'1'
+MOV 41H, #'2'
+MOV 42H, #'3'
+MOV 43H, #'4'
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+MOV R7, #43H
+
+MOV A,#38H ;INIT. LCD 2 LINES, 5X7 MATRIX
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+MOV A,#0EH ;display on, cursor on
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+MOV A,#01 ;clear LCD
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+MOV A,#06H ;shift cursor right
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+MOV A,#84H ;cursor at line 1, pos. 4
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+
+mov p0,#0    ; port p0 is for rows (output port)
+mov p3,#0ffh ; port p3 is for columns (input port)
+
+;;;;; keypad info
+rows equ  4
+cols equ  3
+
+;;;; creating mask for checking columns
+
+mov a,#0h
+mov r1,#0h
+rot_again: 
+setb c
+inc r1
+rlc	a
+cjne r1,#cols,rot_again
+
+;;;;; start scanning 
+start:
+mov r0,a    ; mask is in r0
+again:
+mov r1,#0feh ; ground 0th row
+mov r2,#0
+mov r3,#0
+
+next_row:
+mov p0,r1 
+mov a,p3
+
+anl a,r0
+
+cjne a,0h,key_pressed
+mov a,r1
+rl a
+mov r1,a
+inc r2 				  ; r2 will contain the row index
+cjne r2,#rows,next_row
+jmp again
+
+key_pressed:
+call delayx	  ; debounce time
+again1:
+rrc a
+jnc findkey
+inc r3				; r3 contains the column index
+jmp again1
+
+findkey:
+mov a,#cols
+mov b,r2
+mul ab
+add a,r3
+mov dptr,#key
+movc a,@a+dptr
+mov r4,a
+
+release_key:
+mov a,p3
+anl a,r0
+cjne a,0h,release_key
+call delayx	  ; debounce time
+
+MOV A,#'*' ;display letter *
+ACALL DATAWRT ;call display subroutine
+ACALL DELAY ;give LCD some time
+INC R7
+MOV A, R7
+MOV R1, A
+MOV A, R4
+MOV @R1, A
+CJNE R7, #47H, again
+
+COMPARISON_SUBROUTINE:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+MOV R0, #0H
+;;;;;;;;;;;;;;;;;;;;CHECKS;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+CHECK1: 
+MOV R1, #44H
+MOV A, @R1
+CJNE A, 40H, INCREAMENT
+CHECK2: 
+INC R1
+MOV A, @R1
+CJNE A, 41H, INCREAMENT
+CHECK3: 
+INC R1
+MOV A, @R1
+CJNE A, 42H, INCREAMENT
+CHECK4: 
+INC R1
+MOV A, @R1
+CJNE A, 43H, INCREAMENT
+SJMP DECISION	 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+INCREAMENT:
+INC R0
+SJMP DECISION
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+DISPLAY_SORRY:
+MOV DPTR,#MYCOM
+C4: CLR A
+MOVC A,@A+DPTR
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ SEND_DAT00
+SJMP C4
+SEND_DAT00:
+MOV DPTR,#DISP_SORRY
+D4: CLR A
+MOVC A,@A+DPTR
+ACALL DATAWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ STOP
+SJMP D4
+STOP: SJMP STOP
+//STAY AT STOP UNTILL RESET PIN IS PRESSED AND THEN GOTO START
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+STARTING1:
+LJMP STARTING
+//RET
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+DECISION: 
+CJNE R0, #0H, INVALID
+//CODE TO DISPLAY LOCK OPENED
+MOV DPTR,#MYCOM
+C2: CLR A
+MOVC A,@A+DPTR
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ SEND_DAT1
+SJMP C2
+SEND_DAT1:
+MOV DPTR,#MYDATA1
+D2: CLR A
+MOVC A,@A+DPTR
+ACALL DATAWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ COUNTDOWN1
+SJMP D2
+//JMP COUNTDOWN
+COUNTDOWN1:
+ACALL COUNTDOWN
+jmp INITIALIZATION
+
+RET
+
+INVALID: 
+MOV DPTR,#MYCOM
+C3: CLR A
+MOVC A,@A+DPTR
+ACALL COMNWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ SEND_DAT2
+SJMP C3
+SEND_DAT2:
+MOV DPTR,#MYDATA2
+D3: CLR A
+MOVC A,@A+DPTR
+ACALL DATAWRT ;call command subroutine
+ACALL DELAY ;give LCD some time
+INC DPTR
+JZ SO
+SJMP D3
+SO:
+DJNZ 50H, STARTING1
+SJMP DISPLAY_SORRY
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+delayx:
+
+MOV R5,#45
+lOOOP:
+MOV R6,#255
+DJNZ R6,$
+DJNZ R5, LOOOP
+
+ret
+
+
+
+
+
+
+COMNWRT: ;send command to LCD
+MOV P1,A ;copy reg A to port 1
+CLR P2.0 ;RS=0 for command
+CLR P2.1 ;R/W=0 for write
+SETB P2.2 ;E=1 for high pulse
+ACALL DELAY ;give LCD some time
+CLR P2.2 ;E=0 for H-to-L pulse
+RET
+
+DATAWRT: ;write data to LCD
+MOV P1,A ;copy reg A to port 1
+SETB P2.0 ;RS=1 for data
+CLR P2.1 ;R/W=0 for write
+SETB P2.2 ;E=1 for high pulse
+ACALL DELAY ;give LCD some time
+CLR P2.2 ;E=0 for H-to-L pulse
+RET
+ 
+DELAY: MOV R3,#250 ;50 or higher for fast CPUs
+HERE2: MOV R5,#255 ;R4 = 255
+HERE: DJNZ R5,HERE ;stay until R4 becomes 0
+DJNZ R3,HERE2
+RET
+ENDING:
+
+org 0x400
+MYCOM: DB 38H,0EH,01,06,81H,0 ; commands and null
+MYDATA: DB "Enter Password",0
+MYDATA1: DB "LOCK OPENED",0
+MYDATA2: DB "Wrong Password",0
+DISP_SORRY: DB "Sorry",0
+data1: DB 81H, 0CFH, 92H, 86H, 0CCH, 0A4H, 0A0H, 8FH, 80H, 84H
+key: db '1','2','3','4','5','6','7','8','9','*','0','#',0
+END
